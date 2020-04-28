@@ -17,12 +17,34 @@ public class PlayerWithGroundCollisionSolvingSystem : CollisionSolvingSystem
         var movingEntity = m_CollisionDataList[0].EntityA;
         var playerStatesEntities = GetComponentDataFromEntity<PlayerStates>();
         var playerStates = playerStatesEntities[movingEntity];
+        int triggeredHeadables = 0;
         new MovingObjectWithGroundCollisionSolver
         {
             CollisionDataList = m_CollisionDataList,
             TranslationEntities = GetComponentDataFromEntity<Translation>(),
             MovementDataEntities = GetComponentDataFromEntity<MovementData>(),
-            TackleHeadableBlockMethod = TackleHeadableBlockMethod,
+            TackleHeadableBlockMethod = (_index, _movingEntityBounds, _collisionData, _fromDirections) =>
+            {
+                if (_collisionData.OverlapX > GameEntry.Instance.Config.Global.Collision.HeadableBlockOverlapXThreshold * _movingEntityBounds.Size.x)
+                {
+                    triggeredHeadables += 1;
+                    var headableBlockTagEntities = GetComponentDataFromEntity<HeadableBlockTag>();
+                    if (headableBlockTagEntities.HasComponent(_collisionData.EntityB))
+                    {
+                        var headableBlockTag = headableBlockTagEntities[_collisionData.EntityB];
+                        headableBlockTag.IsHeaded = true;
+                        headableBlockTagEntities[_collisionData.EntityB] = headableBlockTag;
+                    }
+                    else
+                    {
+                        GameEntry.Instance.Audio.PlaySoundEffect("smb_bump");
+                    }
+                }
+                else
+                {
+                    _fromDirections[_index] = _collisionData.SignX > 0 ? CollisionFromDirection.Right : CollisionFromDirection.Left;
+                }
+            },
             TopCorrectionMethod = (ref Translation _movingEntityTranslation, ref MovementData _movementData, ref AABB _movingEntityBounds,
                 float _boundRefValue) =>
             {
@@ -35,7 +57,15 @@ public class PlayerWithGroundCollisionSolvingSystem : CollisionSolvingSystem
 
                 _movementData.Velocity.y = math.max(0, _movementData.Velocity.y);
             },
-            BottomCorrectionMethod = BottomCorrectionMethod,
+            BottomCorrectionMethod = (ref Translation _movingEntityTranslation, ref MovementData _movementData, ref AABB _movingEntityBounds,
+                float _boundRefValue) =>
+            {
+                if (triggeredHeadables > 0)
+                {
+                    _movingEntityTranslation.Value.y -= _movingEntityBounds.Max.y - _boundRefValue + Allowance;
+                    _movementData.Velocity.y = math.min(0, _movementData.Velocity.y);
+                }
+            },
             RightCorrectionMethod = RightCorrectionMethod,
             LeftCorrectionMethod = LeftCorrectionMethod,
         }.Execute(0, m_CollisionDataList.Length);
@@ -55,35 +85,5 @@ public class PlayerWithGroundCollisionSolvingSystem : CollisionSolvingSystem
     {
         _movingEntityTranslation.Value.x += _boundRefValue - _movingEntityBounds.Min.x + Allowance;
         _movementData.Velocity.x = math.max(0, _movementData.Velocity.x);
-    }
-
-    private void BottomCorrectionMethod(ref Translation _movingEntityTranslation, ref MovementData _movementData, ref AABB _movingEntityBounds,
-        float _boundRefValue)
-    {
-        _movingEntityTranslation.Value.y -= _movingEntityBounds.Max.y - _boundRefValue + Allowance;
-        _movementData.Velocity.y = math.min(0, _movementData.Velocity.y);
-    }
-
-    private void TackleHeadableBlockMethod(int _index, AABB _movingEntityBounds, CollisionData _collisionData,
-        NativeArray<CollisionFromDirection> _fromDirections)
-    {
-        if (_collisionData.OverlapX > GameEntry.Instance.Config.Global.Collision.HeadableBlockOverlapXThreshold * _movingEntityBounds.Size.x)
-        {
-            var headableBlockTagEntities = GetComponentDataFromEntity<HeadableBlockTag>();
-            if (headableBlockTagEntities.HasComponent(_collisionData.EntityB))
-            {
-                var headableBlockTag = headableBlockTagEntities[_collisionData.EntityB];
-                headableBlockTag.IsHeaded = true;
-                headableBlockTagEntities[_collisionData.EntityB] = headableBlockTag;
-            }
-            else
-            {
-                GameEntry.Instance.Audio.PlaySoundEffect("smb_bump");
-            }
-        }
-        else
-        {
-            _fromDirections[_index] = _collisionData.SignX > 0 ? CollisionFromDirection.Right : CollisionFromDirection.Left;
-        }
     }
 }
