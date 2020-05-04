@@ -21,7 +21,7 @@ MonoBehaviour:
       y: 0.9
       z: 1
     SuperScale:
-      x: 0.95
+      x: 0.85
       y: 1.9
       z: 1
     LevelDownProtectionTime: 2
